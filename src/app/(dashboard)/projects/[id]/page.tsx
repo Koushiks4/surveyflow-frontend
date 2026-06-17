@@ -2,13 +2,30 @@
 
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { Project } from '@/types';
+import { useAuth } from '@/providers/auth-provider';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ProjectForm } from '@/components/projects/project-form';
+import { AttendanceLogView } from '@/components/projects/attendance-log';
+import { TaskList } from '@/components/projects/task-list';
+import { ActivityFeed } from '@/components/projects/activity-feed';
 import { format } from 'date-fns';
+import {
+  ArrowLeftIcon,
+  CalendarIcon,
+  UserIcon,
+  MapPinIcon,
+  FileTextIcon,
+  ClipboardListIcon,
+  MessageSquareIcon,
+  UsersIcon,
+  FileIcon,
+} from 'lucide-react';
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -16,16 +33,21 @@ interface ProjectDetailPageProps {
 
 export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const { id } = use(params);
+  const { user } = useAuth();
+  const router = useRouter();
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['projects', id],
     queryFn: () => api.get<Project>(`/api/projects/${id}`),
   });
 
+  const isAssigned = project?.project_assignments?.some(a => a.user?.id === user?.id) ?? false;
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-8 w-96" />
         <Skeleton className="h-96 w-full" />
       </div>
     );
@@ -39,89 +61,196 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
     );
   }
 
+  const taskCount = 0;
+  const teamCount = project.project_assignments?.length || 0;
+  const docCount = project.documents?.length || 0;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold">{project.project_number}</h1>
-            {project.status && (
-              <Badge
-                style={{
-                  backgroundColor: project.status.color,
-                  color: '#fff',
-                }}
-              >
-                {project.status.name}
-              </Badge>
+      {/* Header Card */}
+      <div className="rounded-xl border bg-white p-5">
+        <div className="flex items-start justify-between">
+          <div className="space-y-3">
+            <button
+              onClick={() => router.push('/projects')}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeftIcon className="size-3" />
+              Back to projects
+            </button>
+
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-xl font-semibold tracking-tight">{project.title}</h1>
+                {project.status && (
+                  <Badge
+                    className="text-[11px] font-medium"
+                    style={{ backgroundColor: project.status.color, color: '#fff' }}
+                  >
+                    {project.status.name}
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                <span className="font-mono text-xs bg-stone-100 px-2 py-0.5 rounded">
+                  {project.project_number}
+                </span>
+                {project.client && (
+                  <span className="flex items-center gap-1.5">
+                    <UserIcon className="size-3.5" />
+                    {project.client.name}
+                  </span>
+                )}
+                {project.project_type && (
+                  <span className="flex items-center gap-1.5">
+                    <FileTextIcon className="size-3.5" />
+                    {project.project_type.name}
+                  </span>
+                )}
+                {project.start_date && (
+                  <span className="flex items-center gap-1.5">
+                    <CalendarIcon className="size-3.5" />
+                    {format(new Date(project.start_date), 'dd MMM yyyy')}
+                    {project.expected_end_date && (
+                      <> → {format(new Date(project.expected_end_date), 'dd MMM yyyy')}</>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {project.description && (
+              <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+                {project.description}
+              </p>
+            )}
+
+            {project.location_address && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <MapPinIcon className="size-3.5 text-indigo-500" />
+                {project.location_address}
+              </p>
             )}
           </div>
-          <p className="text-muted-foreground">{project.title}</p>
         </div>
       </div>
 
-      <Tabs defaultValue="details">
-        <TabsList>
-          <TabsTrigger value="details">Details</TabsTrigger>
-          <TabsTrigger value="team">
-            Team {project.project_assignments && `(${project.project_assignments.length})`}
-          </TabsTrigger>
-          <TabsTrigger value="documents">
-            Documents {project.documents && `(${project.documents.length})`}
-          </TabsTrigger>
-        </TabsList>
+      {/* Tabs */}
+      <Tabs defaultValue="tasks">
+        <div className="border-b">
+          <TabsList variant="line" className="gap-0">
+            <TabsTrigger value="tasks" className="gap-2 px-4 py-2.5 text-[13px]">
+              <ClipboardListIcon className="size-4" />
+              Tasks
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="gap-2 px-4 py-2.5 text-[13px]">
+              <MessageSquareIcon className="size-4" />
+              Activity
+            </TabsTrigger>
+            <TabsTrigger value="team" className="gap-2 px-4 py-2.5 text-[13px]">
+              <UsersIcon className="size-4" />
+              Team
+              {teamCount > 0 && (
+                <span className="ml-0.5 rounded-full bg-stone-100 px-1.5 py-0 text-[10px] font-medium text-stone-600">
+                  {teamCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="attendance" className="gap-2 px-4 py-2.5 text-[13px]">
+              <MapPinIcon className="size-4" />
+              Attendance
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="gap-2 px-4 py-2.5 text-[13px]">
+              <FileIcon className="size-4" />
+              Documents
+              {docCount > 0 && (
+                <span className="ml-0.5 rounded-full bg-stone-100 px-1.5 py-0 text-[10px] font-medium text-stone-600">
+                  {docCount}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="details" className="gap-2 px-4 py-2.5 text-[13px]">
+              <FileTextIcon className="size-4" />
+              Details
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-        <TabsContent value="details" className="mt-6">
-          <ProjectForm project={project} />
+        <TabsContent value="tasks" className="mt-5">
+          <TaskList projectId={id} isAssigned={isAssigned} />
         </TabsContent>
 
-        <TabsContent value="team" className="mt-6">
-          {project.project_assignments && project.project_assignments.length > 0 ? (
-            <div className="space-y-2">
+        <TabsContent value="activity" className="mt-5">
+          <ActivityFeed projectId={id} isAssigned={isAssigned} />
+        </TabsContent>
+
+        <TabsContent value="team" className="mt-5">
+          {teamCount > 0 ? (
+            <div className="divide-y rounded-lg border bg-white">
               {project.project_assignments.map((assignment) => (
                 <div
                   key={assignment.id}
-                  className="flex items-center justify-between p-3 rounded-lg border"
+                  className="flex items-center justify-between px-4 py-3"
                 >
-                  <div>
-                    <p className="font-medium">{assignment.user.full_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {assignment.user.email}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-full bg-indigo-500/10 flex items-center justify-center text-xs font-medium text-indigo-600">
+                      {assignment.user.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{assignment.user.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{assignment.user.email}</p>
+                    </div>
                   </div>
-                  <Badge variant="secondary">{assignment.role.display_name}</Badge>
+                  <Badge variant="secondary" className="text-xs">{assignment.role.display_name}</Badge>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              No team members assigned
-            </div>
+            <p className="text-sm text-muted-foreground py-8 text-center">No team members assigned</p>
           )}
         </TabsContent>
 
-        <TabsContent value="documents" className="mt-6">
-          {project.documents && project.documents.length > 0 ? (
-            <div className="space-y-2">
-              {project.documents.map((doc) => (
+        <TabsContent value="attendance" className="mt-5">
+          <AttendanceLogView projectId={id} isAssigned={isAssigned} />
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-5">
+          {docCount > 0 ? (
+            <div className="divide-y rounded-lg border bg-white">
+              {project.documents!.map((doc) => (
                 <div
                   key={doc.id}
-                  className="flex items-center justify-between p-3 rounded-lg border"
+                  className="flex items-center justify-between px-4 py-3"
                 >
-                  <div>
-                    <p className="font-medium">{doc.file_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {(doc.file_size / 1024).toFixed(2)} KB • {format(new Date(doc.created_at), 'MMM d, yyyy')}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-lg bg-stone-100 flex items-center justify-center">
+                      <FileIcon className="size-4 text-stone-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{doc.file_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {(doc.file_size / 1024).toFixed(1)} KB
+                        <span className="mx-1.5">·</span>
+                        {format(new Date(doc.created_at), 'dd MMM yyyy')}
+                        {doc.category && doc.category !== 'other' && (
+                          <>
+                            <span className="mx-1.5">·</span>
+                            {doc.category.replace(/_/g, ' ')}
+                          </>
+                        )}
+                      </p>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              No documents uploaded
-            </div>
+            <p className="text-sm text-muted-foreground py-8 text-center">No documents uploaded</p>
           )}
+        </TabsContent>
+
+        <TabsContent value="details" className="mt-5">
+          <ProjectForm project={project} />
         </TabsContent>
       </Tabs>
     </div>

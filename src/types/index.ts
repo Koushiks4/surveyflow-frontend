@@ -103,6 +103,7 @@ export interface Document {
   file_path: string;
   file_size: number;
   file_type: string;
+  category: string;
   created_at: string;
 }
 
@@ -118,3 +119,46 @@ export interface DashboardStats {
   clients: { total: number };
   statuses: Array<{ id: string; name: string; color: string; count: number }>;
 }
+
+export interface AttendanceLog {
+  id: string;
+  project_id: string;
+  user_id: string;
+  check_in_at: string;
+  check_in_lat: number;
+  check_in_lng: number;
+  check_out_at: string | null;
+  check_out_lat: number | null;
+  check_out_lng: number | null;
+  notes: string | null;
+  user?: Pick<User, 'id' | 'full_name'>;
+  project?: { id: string; project_number: string; title: string };
+  created_at: string;
+}
+
+export interface ProjectTask {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string | null;
+  status: 'pending' | 'in_progress' | 'completed';
+  assigned_to: string | null;
+  assigned_user: Pick<User, 'id' | 'full_name'> | null;
+  created_by_user: Pick<User, 'id' | 'full_name'>;
+  due_date: string | null;
+  completed_at: string | null;
+  notes?: ProjectNote[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectNote {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  content: string;
+  user: Pick<User, 'id' | 'full_name'>;
+  created_at: string;
+}
+
+export type DocumentCategory = 'site_photos' | 'survey_data' | 'reports' | 'cad_files' | 'other';
