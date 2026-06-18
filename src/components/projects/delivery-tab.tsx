@@ -26,6 +26,9 @@ import {
   ShieldCheckIcon,
   PackageIcon,
   ClipboardCheckIcon,
+  LinkIcon,
+  CopyIcon,
+  ExternalLinkIcon,
 } from 'lucide-react';
 
 interface DeliveryTabProps {
@@ -40,6 +43,7 @@ export function DeliveryTab({ projectId }: DeliveryTabProps) {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deliveryNotes, setDeliveryNotes] = useState('');
   const [uploadDescription, setUploadDescription] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const canManage = user?.roles.some(r => ['super_admin', 'admin', 'team_lead'].includes(r));
 
@@ -59,6 +63,12 @@ export function DeliveryTab({ projectId }: DeliveryTabProps) {
   const { data: deliveryStatus, isLoading: statusLoading } = useQuery({
     queryKey: ['delivery-status', projectId],
     queryFn: () => api.get<DeliveryStatus>(`/api/delivery/project/${projectId}/status`),
+  });
+
+  // Fetch delivery link
+  const { data: deliveryLink, isLoading: linkLoading } = useQuery({
+    queryKey: ['delivery-link', projectId],
+    queryFn: () => api.get<{ token: string; created_at: string } | null>(`/api/delivery/project/${projectId}/link`),
   });
 
   // Upload deliverable mutation
@@ -114,6 +124,16 @@ export function DeliveryTab({ projectId }: DeliveryTabProps) {
     onError: (err: Error) => toast.error(err.message),
   });
 
+  // Generate delivery link mutation
+  const generateLinkMutation = useMutation({
+    mutationFn: () => api.post<{ token: string }>(`/api/delivery/project/${projectId}/generate-link`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-link', projectId] });
+      toast.success('Delivery link generated');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
   const handleFileView = async (deliverableId: string, fileName: string, fileType: string) => {
     try {
       const { url } = await api.get<{ url: string }>(`/api/delivery/deliverables/${deliverableId}/url`);
@@ -135,7 +155,18 @@ export function DeliveryTab({ projectId }: DeliveryTabProps) {
     }
   };
 
-  const isLoading = deliverablesLoading || checklistLoading || statusLoading;
+  const handleCopyLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setLinkCopied(true);
+      toast.success('Link copied!');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  };
+
+  const isLoading = deliverablesLoading || checklistLoading || statusLoading || linkLoading;
 
   if (isLoading) {
     return (
@@ -247,7 +278,86 @@ export function DeliveryTab({ projectId }: DeliveryTabProps) {
         </div>
       </div>
 
-      {/* Section 2: Closure Checklist */}
+      {/* Section 2: Share with Client */}
+      <div className="rounded-xl border bg-white">
+        <div className="border-b px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <LinkIcon className="size-5 text-violet-600" />
+            <h2 className="text-base font-semibold">Share with Client</h2>
+          </div>
+        </div>
+
+        <div className="p-5">
+          {!deliveryLink ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Generate a secure link to share project deliverables with your client. They can view and confirm receipt without logging in.
+              </p>
+              {canManage ? (
+                <Button
+                  onClick={() => generateLinkMutation.mutate()}
+                  disabled={generateLinkMutation.isPending}
+                  className="w-full sm:w-auto"
+                >
+                  <LinkIcon className="size-4" />
+                  {generateLinkMutation.isPending ? 'Generating...' : 'Generate Delivery Link'}
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  Only Team Leads and above can generate delivery links
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Shareable Link
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={`${window.location.origin}/delivery/${deliveryLink.token}`}
+                    className="font-mono text-xs"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCopyLink(`${window.location.origin}/delivery/${deliveryLink.token}`)}
+                    className="shrink-0"
+                  >
+                    {linkCopied ? (
+                      <>
+                        <CheckCircle2Icon className="size-4" />
+                        Copied!
+                      </>
+                    ) : (
+                      <>
+                        <CopyIcon className="size-4" />
+                        Copy
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(`/delivery/${deliveryLink.token}`, '_blank')}
+                    className="shrink-0"
+                  >
+                    <ExternalLinkIcon className="size-4" />
+                    Preview
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Generated on {format(new Date(deliveryLink.created_at), 'dd MMM yyyy, h:mm a')}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Section 3: Closure Checklist */}
       <div className="rounded-xl border bg-white">
         <div className="border-b px-5 py-4">
           <div className="flex items-center gap-2.5">
@@ -305,7 +415,7 @@ export function DeliveryTab({ projectId }: DeliveryTabProps) {
         </div>
       </div>
 
-      {/* Section 3: Delivery Confirmation */}
+      {/* Section 4: Delivery Confirmation */}
       <div className="rounded-xl border bg-white">
         <div className="border-b px-5 py-4">
           <div className="flex items-center gap-2.5">
