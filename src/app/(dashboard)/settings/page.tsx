@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Organization, ProjectType, ProjectStatus } from '@/types';
+import type { Organization, ProjectType, ProjectStatus, ClosureChecklistItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
@@ -210,6 +210,11 @@ export default function SettingsPage() {
     queryFn: () => api.get<ExpenseCategory[]>('/api/config/expense-categories'),
   });
 
+  const { data: closureChecklistItems } = useQuery({
+    queryKey: ['closure-checklist-items'],
+    queryFn: () => api.get<ClosureChecklistItem[]>('/api/delivery/checklist-items'),
+  });
+
   const [orgName, setOrgName] = useState('');
   const [projectIdPrefix, setProjectIdPrefix] = useState('');
   const [newStatusName, setNewStatusName] = useState('');
@@ -248,6 +253,15 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
       toast.success('Expense category added');
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const addClosureChecklistItemMutation = useMutation({
+    mutationFn: (title: string) => api.post('/api/delivery/checklist-items', { title }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['closure-checklist-items'] });
+      toast.success('Checklist item added');
     },
     onError: (error: Error) => toast.error(error.message),
   });
@@ -325,6 +339,10 @@ export default function SettingsPage() {
               <TabsTrigger value="expense-categories">
                 Expenses
                 {expenseCategories && <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{expenseCategories.length}</Badge>}
+              </TabsTrigger>
+              <TabsTrigger value="closure-checklist">
+                Closure Checklist
+                {closureChecklistItems && <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{closureChecklistItems.length}</Badge>}
               </TabsTrigger>
             </TabsList>
 
@@ -422,6 +440,21 @@ export default function SettingsPage() {
                   })
                 }
                 isAdding={addExpenseCategoryMutation.isPending}
+              />
+            </TabsContent>
+
+            <TabsContent value="closure-checklist" className="mt-4">
+              <ConfigList
+                items={(closureChecklistItems || []).map(item => ({ id: item.id, name: item.title }))}
+                onAdd={(title) => addClosureChecklistItemMutation.mutate(title)}
+                onRequestDelete={(item) =>
+                  setDeleteTarget({
+                    ...item,
+                    endpoint: `/api/delivery/checklist-items/${item.id}`,
+                    queryKey: 'closure-checklist-items',
+                  })
+                }
+                isAdding={addClosureChecklistItemMutation.isPending}
               />
             </TabsContent>
           </Tabs>

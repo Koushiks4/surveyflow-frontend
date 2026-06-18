@@ -162,3 +162,91 @@ export interface ProjectNote {
 }
 
 export type DocumentCategory = 'site_photos' | 'survey_data' | 'reports' | 'cad_files' | 'other';
+
+export interface TaskFile {
+  id: string;
+  task_id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  file_type: string;
+  version: number;
+  uploader: Pick<User, 'id' | 'full_name'>;
+  created_at: string;
+}
+
+export interface PaymentEntry {
+  id: string;
+  project_id: string;
+  type: 'advance' | 'expense';
+  amount: number;
+  category: { id: string; name: string } | null;
+  description: string | null;
+  payment_method: string | null;
+  date: string;
+  receipt_path: string | null;
+  receipt_name: string | null;
+  receipt_size: number | null;
+  created_by_user: Pick<User, 'id' | 'full_name'>;
+  created_at: string;
+}
+
+export interface ProjectSummary {
+  quoted: number;
+  advances: number;
+  expenses: number;
+  balance: number;
+  profit: number;
+}
+
+export interface MonthlyReportProject {
+  project_id: string;
+  project_number: string;
+  title: string;
+  client_name: string;
+  quoted: number;
+  advances: number;
+  expenses: number;
+  balance: number;
+  profit: number;
+}
+
+export interface MonthlyReport {
+  projects: MonthlyReportProject[];
+  totals: {
+    quoted: number;
+    advances: number;
+    expenses: number;
+    balance: number;
+    profit: number;
+  };
+}
+
+export interface ProjectDeliverable {
+  id: string;
+  project_id: string;
+  file_name: string;
+  file_path: string;
+  file_size: number;
+  file_type: string;
+  description: string | null;
+  uploader: Pick<User, 'id' | 'full_name'>;
+  created_at: string;
+}
+
+export interface ClosureChecklistItem {
+  id: string;
+  title: string;
+  display_order: number;
+  is_active: boolean;
+  checked?: boolean;
+  checked_by?: Pick<User, 'id' | 'full_name'> | null;
+  checked_at?: string | null;
+}
+
+export interface DeliveryStatus {
+  confirmed: boolean;
+  confirmed_at: string | null;
+  confirmed_by: Pick<User, 'id' | 'full_name'> | null;
+  notes: string | null;
+}

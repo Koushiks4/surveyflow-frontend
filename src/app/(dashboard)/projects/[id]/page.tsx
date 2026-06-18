@@ -1,7 +1,7 @@
 'use client';
 
-import { use } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { use, useState, useRef } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { Project } from '@/types';
@@ -14,6 +14,10 @@ import { ProjectForm } from '@/components/projects/project-form';
 import { AttendanceLogView } from '@/components/projects/attendance-log';
 import { TaskList } from '@/components/projects/task-list';
 import { ActivityFeed } from '@/components/projects/activity-feed';
+import { DeliveryTab } from '@/components/projects/delivery-tab';
+import { FileViewer } from '@/components/file-viewer';
+import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import {
   ArrowLeftIcon,
@@ -25,6 +29,11 @@ import {
   MessageSquareIcon,
   UsersIcon,
   FileIcon,
+  EyeIcon,
+  DownloadIcon,
+  UploadIcon,
+  Trash2Icon,
+  PackageIcon,
 } from 'lucide-react';
 
 interface ProjectDetailPageProps {
@@ -35,6 +44,12 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const { id } = use(params);
   const { user } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [viewerFile, setViewerFile] = useState<{ url: string; name: string; type: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const canUpload = user?.roles.some(r => ['super_admin', 'admin', 'team_lead', 'office_staff'].includes(r));
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['projects', id],
@@ -42,6 +57,42 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   });
 
   const isAssigned = project?.project_assignments?.some(a => a.user?.id === user?.id) ?? false;
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => api.upload(`/api/projects/${id}/documents`, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', id] });
+      toast.success('Document uploaded');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteDocMutation = useMutation({
+    mutationFn: (docId: string) => api.delete(`/api/projects/documents/${docId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects', id] });
+      toast.success('Document deleted');
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const handleDocView = async (docId: string, fileName: string, fileType: string) => {
+    try {
+      const { url } = await api.get<{ url: string }>(`/api/clients/documents/${docId}/url`);
+      setViewerFile({ url, name: fileName, type: fileType });
+    } catch { toast.error('Failed to load preview'); }
+  };
+
+  const handleDocDownload = async (docId: string, fileName: string) => {
+    try {
+      const { url } = await api.get<{ url: string }>(`/api/clients/documents/${docId}/url`);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+    } catch { toast.error('Failed to download'); }
+  };
 
   if (isLoading) {
     return (
@@ -160,6 +211,10 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
               <MapPinIcon className="size-4" />
               Attendance
             </TabsTrigger>
+            <TabsTrigger value="delivery" className="gap-2 px-4 py-2.5 text-[13px]">
+              <PackageIcon className="size-4" />
+              Delivery
+            </TabsTrigger>
             <TabsTrigger value="documents" className="gap-2 px-4 py-2.5 text-[13px]">
               <FileIcon className="size-4" />
               Documents
@@ -214,7 +269,33 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           <AttendanceLogView projectId={id} isAssigned={isAssigned} />
         </TabsContent>
 
+        <TabsContent value="delivery" className="mt-5">
+          <DeliveryTab projectId={id} />
+        </TabsContent>
+
         <TabsContent value="documents" className="mt-5">
+          {canUpload && (
+            <div className="flex justify-end mb-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadMutation.mutate(file);
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadMutation.isPending}
+              >
+                <UploadIcon className="size-4" />
+                {uploadMutation.isPending ? 'Uploading...' : 'Upload Document'}
+              </Button>
+            </div>
+          )}
           {docCount > 0 ? (
             <div className="divide-y rounded-lg border bg-white">
               {project.documents!.map((doc) => (
@@ -241,6 +322,31 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
                       </p>
                     </div>
                   </div>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      onClick={() => handleDocView(doc.id, doc.file_name, doc.file_type)}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                      title="Preview"
+                    >
+                      <EyeIcon className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDocDownload(doc.id, doc.file_name)}
+                      className="rounded-md p-1.5 text-muted-foreground hover:bg-stone-100 hover:text-foreground transition-colors"
+                      title="Download"
+                    >
+                      <DownloadIcon className="size-4" />
+                    </button>
+                    {canUpload && (
+                      <button
+                        onClick={() => setDeleteTarget({ id: doc.id, name: doc.file_name })}
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-600 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2Icon className="size-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -253,6 +359,28 @@ export default function ProjectDetailPage({ params }: ProjectDetailPageProps) {
           <ProjectForm project={project} />
         </TabsContent>
       </Tabs>
+
+      <FileViewer
+        open={!!viewerFile}
+        onOpenChange={(open) => { if (!open) setViewerFile(null); }}
+        url={viewerFile?.url ?? null}
+        fileName={viewerFile?.name ?? ''}
+        fileType={viewerFile?.type ?? ''}
+      />
+
+      <ConfirmDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteDocMutation.mutate(deleteTarget.id, {
+              onSuccess: () => setDeleteTarget(null),
+            });
+          }
+        }}
+        itemName={deleteTarget?.name}
+        isPending={deleteDocMutation.isPending}
+      />
     </div>
   );
 }
